@@ -207,6 +207,15 @@ body,html{background:#030814}
 .progressline{height:10px;border-radius:6px;background:rgba(120,140,180,.35)}
 .footer{margin:18px 10px 0;padding:16px 18px;text-align:center;border-radius:22px;border:1px solid rgba(45,120,255,.5);background:linear-gradient(90deg,rgba(240,40,70,.18),rgba(10,24,64,.9) 40%,rgba(30,110,255,.2));color:#e9f2ff;font-size:14px;font-style:italic;letter-spacing:0;box-shadow:0 0 14px rgba(30,100,255,.25)}
 </style>
+<style>
+/* ===== RESUMO ORIGEM / ATUAL / DESTINO ===== */
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 10px 0}
+.trio-bloco{min-width:0;padding:11px 10px 10px;border-radius:18px;background:rgba(4,10,30,.75);border:1.5px solid var(--c);box-shadow:0 0 14px color-mix(in srgb,var(--c) 40%,transparent),inset 0 0 16px color-mix(in srgb,var(--c) 10%,transparent)}
+.trio-rot{font-size:10.5px;font-weight:850;letter-spacing:.7px;color:var(--c);text-transform:uppercase}
+.trio-nome{font-size:14px;font-weight:800;color:#fff;line-height:1.15;margin-top:5px;overflow-wrap:anywhere;min-height:33px}
+.trio-hora{font-size:20px;font-weight:850;color:var(--c);margin-top:5px;font-variant-numeric:tabular-nums}
+.trio-sub{font-size:10.5px;color:rgba(205,225,255,.7);margin-top:1px;min-height:13px}
+</style>
 </head>
 <body>
 <main class="app">
@@ -226,6 +235,12 @@ body,html{background:#030814}
         <div class="meta chips"><span><i class="ic">📍</i><div><b id="m-km">—</b><em>Distância</em></div></span><span><i class="ic">🚉</i><div><b id="m-est">—</b><em>Percurso</em></div></span><span><i class="ic">🕒</i><div><b id="tr-trip-timer">00:00</b><em>Tempo de viagem</em></div></span></div>
         <div class="meta" id="meta-trem" style="display:none"><span id="m-prefixo-w" style="display:none"><i class="ic">🚆</i>Prefixo <b id="m-prefixo"></b></span><span id="m-equipe-w" style="display:none"><i class="ic">👥</i>Equipe <b id="m-equipe"></b></span></div>
       </div>
+    </section>
+
+    <section class="trio" id="trio">
+      <div class="trio-bloco" style="--c:#22d36b"><div class="trio-rot">Origem</div><div class="trio-nome" id="trio-o-nome">—</div><div class="trio-hora" id="trio-o-hora">--:--</div><div class="trio-sub">saída</div></div>
+      <div class="trio-bloco" style="--c:#2f8bff"><div class="trio-rot">Atual</div><div class="trio-nome" id="trio-a-nome">—</div><div class="trio-hora" id="trio-a-hora">--:--</div><div class="trio-sub" id="trio-a-sub">&nbsp;</div></div>
+      <div class="trio-bloco" style="--c:#f0b400"><div class="trio-rot">Destino</div><div class="trio-nome" id="trio-d-nome">—</div><div class="trio-hora" id="trio-d-hora">--:--</div><div class="trio-sub" id="trio-d-sub">previsão</div></div>
     </section>
 
     <div id="banner"></div>
@@ -401,7 +416,24 @@ if (!viagemId) {
     }
 
     let ultimoDisplayIdx = -1;
+function atualizarTrio(idx, total, d, previsoes, pos, chegou, naEstacao) {
+        try {
+            const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+            const hm = ts => ts ? new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+            const E = d.estacoes || [], P = d.passagens || {};
+            const nm = i => (E[i] && E[i].nome) || '—';
+            set('trio-o-nome', nm(0)); set('trio-o-hora', hm(P[0] || d.t0 || d.criadoEm));
+            const cur = Math.min(idx, total - 1);
+            set('trio-a-nome', nm(cur)); set('trio-a-hora', hm(P[cur] || (pos && pos.atualizadoEm)));
+            set('trio-a-sub', chegou ? 'chegou' : (naEstacao ? 'na estação' : (cur < total - 1 ? '→ ' + nm(cur + 1) : '')));
+            set('trio-d-nome', nm(total - 1));
+            const prev = (previsoes && previsoes[total - 1]) || 0;
+            set('trio-d-hora', hm(chegou ? (P[total - 1] || prev) : prev));
+            set('trio-d-sub', chegou ? 'chegada' : 'previsão');
+        } catch (e) { /* só visual */ }
+    }
     function atualizarProgresso(idx, total, d, previsoes, pos) {
+        atualizarTrio(idx, total, d, previsoes, pos, d.status === 'chegou', !!(pos && pos.estaNaEstacaoAtual));
         const pass = d.passagens || {};
         const chegou = d.status === 'chegou';
         const naEstacao = !!(pos && pos.estaNaEstacaoAtual);
@@ -441,10 +473,11 @@ if (!viagemId) {
         $('gps-progress-fill').style.width = pct + '%';
         $('tr-progress-train').style.left = pct + '%';
         $('pct').textContent = Math.round(pct) + '%';
-        const concl = chegou ? total - 1 : idx;
+        // concluídas inclui a estação em que está/passou: concluídas + restantes = total
+        const concl = chegou ? total : Math.min(total, idx + 1);
         $('tr-progress-concluidas').textContent = concl;
         $('tr-progress-total-estacoes').textContent = total;
-        $('tr-progress-restantes-num').textContent = Math.max(0, (total - 1) - concl);
+        $('tr-progress-restantes-num').textContent = Math.max(0, total - concl);
         let km = null;
         if (chegou) km = 0;
         else if (pos && typeof pos.kmRestanteM === 'number') km = pos.kmRestanteM / 1000;
