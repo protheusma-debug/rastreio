@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Acompanhar viagem — QualAEstacao</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<style>
+:root{--bg:#020916;--blue:#12a9ff;--cyan:#00d9ff;--green:#16e78b;--red:#f51d32;--muted:#8d9bae;--white:#f4f8ff}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#020916;color:var(--white);font-family:Inter,-apple-system,Roboto,Arial,sans-serif}
+body{min-height:100vh}
+.app{width:100%;max-width:520px;margin:auto;overflow:hidden;min-height:100vh;padding-bottom:28px;
+ background:radial-gradient(circle at 85% 10%,rgba(0,170,255,.12),transparent 28%),linear-gradient(180deg,#020711 0%,#030b17 55%,#020711 100%)}
+.topbar{padding:22px 20px 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(80,150,200,.18)}
+.logo{width:52px;height:52px;border-radius:16px;background:linear-gradient(145deg,#ff2338,#d70b20);display:grid;place-items:center;box-shadow:0 0 24px rgba(245,29,50,.24);font-size:27px}
+.brand h1{font-size:21px;font-weight:800;letter-spacing:-.4px}
+.brand p{color:#9aa8ba;font-size:14px}
+.live{margin-left:auto;text-align:right;color:#18e99a;font-weight:800;font-size:14px}
+.live span{display:block;color:#9aa8ba;font-size:11px;font-weight:500;margin-top:2px}
+.live.off{color:#ffb020}
+.hero{padding:16px 20px 12px;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;right:-50px;top:0;width:240px;height:170px;pointer-events:none;opacity:.7;
+ background:linear-gradient(120deg,transparent 36%,var(--linha,rgba(245,29,50,.9)) 37%,var(--linha,rgba(245,29,50,.9)) 42%,transparent 43%),linear-gradient(135deg,transparent 48%,rgba(14,169,255,.25) 49%,transparent 62%)}
+.status{display:inline-flex;align-items:center;gap:9px;background:rgba(8,92,67,.72);border:1px solid rgba(25,235,150,.25);padding:8px 15px;border-radius:24px;color:#62f2b0;font-weight:800;font-size:14px;position:relative;z-index:2}
+.status i{width:9px;height:9px;border-radius:50%;background:#48f4ac;box-shadow:0 0 12px #48f4ac;animation:pulse 1.6s infinite}
+.status.encerrada{background:rgba(120,20,30,.6);border-color:rgba(245,29,50,.4);color:#ff8a95}
+.status.encerrada i{background:#ff5a6a;box-shadow:0 0 12px #ff5a6a;animation:none}
+.status.chegou i{animation:none}
+@keyframes pulse{50%{opacity:.35}}
+.route{position:relative;z-index:2;margin-top:16px}
+.route h2{font-size:27px;font-weight:850;letter-spacing:-.8px;line-height:1.15}
+.arrow{color:var(--blue);font-weight:900}
+.meta{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:9px;color:#a7b5c8;font-size:14px}
+.meta b{color:#e9f2ff}
+.msg{text-align:center;padding:60px 24px;color:rgba(255,255,255,.55);font-size:15px}
+.mapwrap{height:300px;margin:4px 20px 0;border:1px solid rgba(18,169,255,.72);border-radius:22px;overflow:hidden;box-shadow:inset 0 0 45px rgba(0,0,0,.65)}
+#map{width:100%;height:100%;background:#071421}
+.mapwrap{position:relative}
+.recenter{position:absolute;right:12px;bottom:12px;z-index:1000;width:44px;height:44px;border-radius:50%;border:1px solid #396684;background:#081b2e;color:#fff;font-size:22px;display:grid;place-items:center;cursor:pointer}
+.recenter.on{background:#0b96d5;border-color:#16d4ff}
+.gps-user-marker{width:20px;height:20px;position:relative}
+.gps-user-marker .gps-dot{width:16px;height:16px;border-radius:50%;background:#E92030;border:3px solid #fff;box-shadow:0 0 0 3px rgba(233,32,48,.35),0 2px 8px rgba(0,0,0,.3);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;animation:markerBounce 2s ease-in-out infinite}
+.gps-user-marker .gps-pulse{width:40px;height:40px;border-radius:50%;background:rgba(233,32,48,.25);position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);animation:pulseGPS 2s ease-out infinite;z-index:1}
+@keyframes markerBounce{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.15)}}
+@keyframes pulseGPS{0%{transform:translate(-50%,-50%) scale(.5);opacity:.9}100%{transform:translate(-50%,-50%) scale(1.6);opacity:0}}
+.route-station-marker{display:flex;align-items:center;justify-content:center}
+.route-station-marker .station-dot{width:12px;height:12px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transition:all .4s ease}
+.route-station-marker .station-dot.passed{background:#2E9E3A!important;transform:scale(.8);opacity:.7}
+.route-station-marker .station-dot.current{transform:scale(1.4);box-shadow:0 0 0 4px rgba(233,32,48,.3),0 2px 8px rgba(0,0,0,.3)}
+.route-station-marker .station-dot.upcoming{opacity:.5}
+.station-label-permanent{background:rgba(20,20,26,.88)!important;color:#fff!important;border:none!important;box-shadow:0 1px 4px rgba(0,0,0,.4)!important;font-size:10px!important;font-weight:700!important;padding:2px 6px!important;border-radius:5px!important}
+.station-label-permanent::before{display:none!important}
+/* "A caminho" entre as estações — igual ao app */
+.station.em-transito{margin-left:44px}
+.station.em-transito:before{display:none}
+.transit{display:none;position:absolute;right:50%;top:11px;width:calc(100% + 44px);height:12px;padding:0 20px;box-sizing:border-box;align-items:center;gap:3px;z-index:1;pointer-events:none;animation:pulsoACaminho 1.4s ease-in-out infinite}
+.station.em-transito .transit{display:flex}
+.transit i{flex:1;height:2px;border-radius:2px;background:#16e78b;box-shadow:0 0 6px #16e78b}
+.transit span{font-size:10px;font-weight:700;color:#16e78b;white-space:nowrap;line-height:12px}
+@keyframes pulsoACaminho{0%,100%{opacity:1}50%{opacity:.35}}
+.kmrow{margin:14px 20px 0;padding:14px 18px;border:1px solid rgba(40,116,170,.62);border-radius:22px;background:linear-gradient(135deg,rgba(7,26,44,.97),rgba(3,13,27,.97));display:flex;justify-content:space-between;align-items:center;font-size:14px;color:#a6b6c9}
+.kmrow b{font-size:22px;color:#fff;font-weight:850}
+.card{margin:14px 20px 0;border:1px solid rgba(40,116,170,.62);border-radius:22px;background:linear-gradient(135deg,rgba(7,26,44,.97),rgba(3,13,27,.97));box-shadow:0 10px 28px rgba(0,0,0,.2);overflow:hidden}
+.speed{display:grid;grid-template-columns:112px 1fr;align-items:center;gap:6px;padding:16px 18px}
+.gauge{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin:auto;background:conic-gradient(#12d98b 0deg 0deg,#1a2b3e 0deg 360deg);box-shadow:0 0 25px rgba(0,220,255,.16)}
+.gauge-in{width:76px;height:76px;border-radius:50%;background:#071526;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-in b{font-size:28px;font-weight:850;color:#20e999;line-height:1}
+.gauge-in small{font-size:11px;color:#aab7c7;margin-top:2px}
+.nextcol{border-left:1px solid rgba(120,160,190,.22);padding-left:16px;min-width:0}
+.label{color:#a6b6c9;font-size:13px;margin-bottom:5px}
+.nextname{display:flex;align-items:center;gap:10px}
+.nexticon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:#0b96d5;font-size:16px}
+.nextname strong{font-size:20px;font-weight:850;line-height:1.15;word-break:break-word}
+.nextstats{display:flex;gap:14px;margin-top:9px;font-size:14px;font-weight:700}
+.nextstats span:empty{display:none}
+.exit{display:flex;align-items:center;padding:15px 18px;background:linear-gradient(90deg,rgba(0,135,255,.13),transparent 70%)}
+.trainIcon{width:56px;height:56px;border-radius:50%;border:8px solid rgba(13,93,156,.35);background:#0b96d5;display:grid;place-items:center;font-size:24px;margin-right:14px;flex-shrink:0}
+.exit h3{color:#a7b6ca;font-size:14px;font-weight:600}
+.exit strong{display:block;font-size:22px;margin-top:2px}
+.exit-time{margin-left:auto;text-align:right;padding-left:10px;flex-shrink:0}
+.exit-time .t{font-size:28px;font-weight:850;line-height:1}
+.etab{display:inline-block;margin-top:7px;background:#087e5a;color:#68f5b7;border-radius:18px;padding:5px 10px;font-size:11px;font-weight:800}
+.etab.prev{background:#0b4f7a;color:#7fd0ff}
+.etab.enc{background:#5a1a22;color:#ff9aa4}
+.progress{padding:18px}
+.sectionTitle{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#b4c1d2;font-size:13px;font-weight:800;letter-spacing:.3px}
+.sectionTitle span:last-child{font-weight:600;color:#9fb0c4;text-align:right}
+.progressline{height:8px;border-radius:8px;background:#1a2b3e;margin:18px 0 13px;position:relative}
+.progressfill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:8px;background:linear-gradient(90deg,#087bff,#13cfff,#17dd88);transition:width .8s ease}
+.progresstrain{position:absolute;top:50%;left:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#0b96d5;border:2px solid #fff;display:grid;place-items:center;font-size:11px;transition:left .8s ease}
+.progressText{font-size:14px;color:#aab7c8;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.progressText b{color:#fff;font-size:18px}
+.timeline{padding:18px 0 14px}
+.timeline .sectionTitle{padding:0 18px}
+.stations{display:flex;overflow-x:auto;padding:18px 14px 6px;scrollbar-width:none}
+.stations::-webkit-scrollbar{display:none}
+.station{flex:0 0 78px;text-align:center;font-size:11px;color:#aab7c7;position:relative}
+.station:not(:first-child):before{content:"";position:absolute;top:16px;right:50%;width:100%;height:3px;background:#15344d}
+.station.passed:not(:first-child):before,.station.current:not(:first-child):before{background:linear-gradient(90deg,#18e78e,#10b9ff)}
+.conex{position:absolute;top:-14px;left:0;right:0;display:flex;justify-content:center;gap:2px;z-index:3}
+.conex span{white-space:nowrap;font-size:9px;font-weight:800;color:#fff;border-radius:8px;padding:1px 5px}
+.dot{width:34px;height:34px;border-radius:50%;margin:0 auto 8px;background:#092236;border:3px solid #0b4f6b;display:grid;place-items:center;color:#16e890;font-size:16px;position:relative;z-index:2}
+.station.passed .dot{border-color:#0b7c9d}
+.station.current .dot{background:#0b9bd7;border-color:#16d4ff;box-shadow:0 0 0 7px rgba(0,160,255,.12),0 0 20px rgba(0,174,255,.4);color:#fff}
+.station b{display:block;color:#eef5ff;font-size:11px;line-height:1.25;padding:0 2px;word-break:break-word}
+.station small{display:block;color:#16e890;font-size:10px;margin-top:3px;min-height:24px;line-height:1.35}
+.station.current small{color:#16bfff}
+.station.next small{color:#ffcf5a}
+.linecard{display:flex;align-items:center;gap:14px;padding:16px 18px}
+.badge{min-width:60px;border-radius:14px;padding:8px 10px;text-align:center;color:#fff;font-weight:800;flex-shrink:0}
+.badge .num{display:block;font-size:24px;line-height:1}
+.badge .name{display:block;font-size:10px;margin-top:3px;text-transform:uppercase;letter-spacing:.3px}
+.linecard h3{font-size:16px;font-weight:800}
+.linecard p{font-size:13px;color:#a7b5c8;margin-top:4px}
+.linecard p b{color:#fff}
+.times{display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;padding:14px 8px}
+.times div+div{border-left:1px solid rgba(120,160,190,.22)}
+.times .t{font-size:22px;font-weight:850}
+.times .l{font-size:12px;color:#a6b6c9;margin-top:3px}
+.banner{margin:14px 20px 0;padding:12px 14px;border-radius:14px;font-size:14px;text-align:center}
+.banner.chegou{background:rgba(46,158,58,.15);border:1px solid rgba(46,158,58,.35);color:#7CD98A}
+.banner.encerrada{background:rgba(233,32,48,.15);border:1px solid rgba(233,32,48,.35);color:#ff9aa4}
+.final{margin:14px 20px 0;padding:16px;border-radius:18px;background:linear-gradient(135deg,#006EF5,#003c85)}
+.final-h{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:12px}
+.final-dot{width:9px;height:9px;border-radius:50%;background:#00D9D4;animation:pulse 1.5s infinite}
+.final-s{display:flex;justify-content:space-between;font-size:15px;font-weight:800}
+.footer{text-align:center;color:#6f8096;font-size:12px;padding:20px 20px 0}
+@media(min-width:521px){body{padding:20px 0}.app{border-radius:24px;box-shadow:0 20px 70px #000}}
+
+/* ===== NOVA IDENTIDADE VISUAL — foco na localização do passageiro ===== */
+:root{--bg:#07111f;--blue:#36a8ff;--cyan:#5bd6ff;--green:#36d99a;--red:#ed3448;--muted:#9aabc0;--white:#f4f7fc}
+html,body{background:#050d18;color:var(--white);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+body{background:radial-gradient(ellipse at 50% -12%,rgba(39,126,204,.22),transparent 42%),#050d18}
+.app{max-width:600px;padding:0 0 30px;background:linear-gradient(180deg,#0a1728 0%,#081321 42%,#07111e 100%);box-shadow:0 24px 80px rgba(0,0,0,.38)}
+.topbar{padding:20px 22px 17px;border-bottom:1px solid rgba(148,183,220,.13);background:rgba(8,20,35,.92);gap:13px}
+.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(145deg,#f04454,#bd1e35);box-shadow:0 8px 24px rgba(237,52,72,.22);font-size:24px}
+.brand h1{font-size:20px;letter-spacing:-.65px}.brand p{font-size:12px;color:#91a5bd;margin-top:3px;letter-spacing:.2px}
+.live{font-size:12px;letter-spacing:.2px}.live span{font-size:10px;color:#91a5bd}
+.hero{padding:21px 22px 17px;background:linear-gradient(115deg,rgba(23,53,82,.48),rgba(8,22,38,.1));border-bottom:1px solid rgba(148,183,220,.08)}
+.hero:before{content:"LOCALIZAÇÃO DO PASSAGEIRO";display:block;color:#83a6c8;font-size:10px;font-weight:850;letter-spacing:1.55px;margin:0 0 12px}
+.hero:after{right:-85px;top:12px;width:260px;height:180px;opacity:.23}
+.status{padding:7px 12px;border-radius:9px;background:rgba(24,166,112,.13);border-color:rgba(54,217,154,.28);font-size:11px;letter-spacing:.2px}
+.status i{width:7px;height:7px}
+.route{margin-top:14px}.route h2{font-size:clamp(23px,6vw,29px);letter-spacing:-.9px;line-height:1.16}.arrow{color:#69c7ff;padding:0 3px}
+.meta{margin-top:11px;gap:7px}.meta span{padding:6px 9px;border:1px solid rgba(142,176,210,.13);border-radius:8px;background:rgba(5,17,30,.5);font-size:11px;color:#9eb2c9}.meta b{color:#eaf3ff}
+#banner{padding:0 18px} .banner{margin:12px 0 0;border-radius:11px;font-size:12px}
+.mapwrap{height:340px;margin:16px 16px 0;border:1px solid rgba(103,171,225,.32);border-radius:19px;box-shadow:0 12px 34px rgba(0,0,0,.28);background:#102337}
+#map{background:#102337}.recenter{right:12px;bottom:12px;width:42px;height:42px;border-radius:13px;background:#102b46;border:1px solid rgba(120,190,240,.42);box-shadow:0 5px 18px rgba(0,0,0,.3)}
+.card,.kmrow{margin:13px 16px 0;border:1px solid rgba(129,169,207,.17);border-radius:16px;background:linear-gradient(145deg,rgba(17,37,59,.98),rgba(10,25,42,.98));box-shadow:0 8px 22px rgba(0,0,0,.16)}
+/* O cartão principal passa a destacar a estação atual/próxima; velocidade fica secundária. */
+.speed{grid-template-columns:76px minmax(0,1fr);gap:12px;padding:17px 16px;min-height:116px}
+.gauge{width:68px;height:68px;background:conic-gradient(#36d99a 0deg 0deg,#23384d 0deg 360deg);box-shadow:none}
+.gauge-in{width:56px;height:56px;background:#10243a}.gauge-in b{font-size:20px;color:#8fe9c4}.gauge-in small{font-size:9px}
+.nextcol{border-left:1px solid rgba(142,176,210,.17);padding-left:14px}.label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8fa9c4;margin-bottom:7px}
+.nextname{gap:9px}.nexticon{width:31px;height:31px;border-radius:10px;font-size:14px}.nextname strong{font-size:clamp(18px,5vw,22px);letter-spacing:-.35px}.nextstats{font-size:11px;gap:12px;margin-top:8px;color:#b7c9dc}
+.exit{padding:14px 16px}.trainIcon{width:43px;height:43px;border:0;border-radius:13px;font-size:19px;margin-right:12px;background:rgba(48,153,220,.2)!important;color:#9edbff}
+.exit h3{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8fa9c4}.exit strong{font-size:17px}.exit-time .t{font-size:23px}.etab{font-size:9px;padding:5px 8px}
+.progress{padding:16px}.sectionTitle{font-size:10px;letter-spacing:1px;color:#a9bfd5}.sectionTitle span:last-child{font-size:10px;color:#8fa9c4}.progressline{height:6px;margin:16px 0 11px;background:#20364d}.progressfill{background:linear-gradient(90deg,#2989e8,#43c7ee,#36d99a)}.progresstrain{width:20px;height:20px;font-size:10px;background:#258fca;border:2px solid #eaf7ff}
+.progressText{font-size:11px;color:#9fb3c9}.progressText b{font-size:15px}
+.timeline{padding:16px 0 13px}.timeline .sectionTitle{padding:0 16px}.stations{padding:17px 12px 6px}.station{flex-basis:76px;font-size:10px}.dot{width:30px;height:30px;background:#102a42;border-color:#31536f}.station b{font-size:10px}.station small{font-size:9px}
+.linecard{padding:14px 16px;gap:12px}.badge{min-width:54px;border-radius:11px}.badge .num{font-size:21px}.linecard h3{font-size:14px}.linecard p{font-size:11px}
+.kmrow{padding:13px 16px;font-size:11px;color:#91a9c1}.kmrow b{font-size:18px}
+.times{padding:13px 6px}.times .t{font-size:19px}.times .l{font-size:10px;color:#91a9c1}
+.final{margin:13px 16px 0;padding:15px;border-radius:15px;background:linear-gradient(120deg,#1269b5,#104477)}
+.footer{padding:22px 18px 0;color:#617891;font-size:10px;letter-spacing:.2px}
+.station-label-permanent{background:rgba(7,19,33,.92)!important;border:1px solid rgba(150,190,225,.2)!important;font-size:9px!important}
+.leaflet-control-zoom a{background:#102b46!important;color:#eaf5ff!important;border-color:#294b68!important}
+@media(min-width:601px){body{padding:24px 12px}.app{border:1px solid rgba(136,176,215,.16);border-radius:24px;overflow:hidden}.mapwrap{height:390px}}
+@media(max-width:380px){.topbar{padding:17px 16px}.hero{padding:18px 16px 15px}.mapwrap{height:300px;margin-left:12px;margin-right:12px}.card,.kmrow{margin-left:12px;margin-right:12px}.speed{grid-template-columns:62px minmax(0,1fr);gap:8px;padding:14px 12px}.gauge{width:58px;height:58px}.gauge-in{width:48px;height:48px}.gauge-in b{font-size:18px}.nextcol{padding-left:10px}}
+
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div class="logo">🚆</div>
+    <div class="brand"><h1>QualAEstacao</h1><p>LOCALIZAÇÃO EM TEMPO REAL</p></div>
+    <div class="live" id="live">● Online<span id="live-sub">em tempo real</span></div>
+  </header>
+
+  <div class="msg" id="status-msg-inicial">Conectando…</div>
+
+  <div id="conteudo" style="display:none;">
+    <section class="hero" id="hero">
+      <div class="status" id="status"><i></i><span id="status-txt">Passageiro em deslocamento</span></div>
+      <div class="route">
+        <h2><span id="o-nome">—</span> <span class="arrow">→</span> <span id="d-nome">—</span></h2>
+        <div class="meta"><span>⌁ <b id="m-km">—</b></span><span>🚉 <b id="m-est">—</b></span><span>⏱ <b id="tr-trip-timer">00:00</b></span></div>
+        <div class="meta" id="meta-trem" style="display:none"><span id="m-prefixo-w" style="display:none">🚆 Prefixo <b id="m-prefixo"></b></span><span id="m-equipe-w" style="display:none">👥 Equipe <b id="m-equipe"></b></span></div>
+      </div>
+    </section>
+
+    <div id="banner"></div>
+
+    <section class="mapwrap"><div id="map"></div><button class="recenter" id="recenter" title="Acompanhar a localização">⌖</button></section>
+
+    <div id="conteudo-trem">
+      <section class="card speed">
+        <div class="gauge" id="gauge"><div class="gauge-in"><b id="stat-velocidade">0</b><small>km/h</small></div></div>
+        <div class="nextcol">
+          <div class="label" id="gps-station-label">Próxima estação</div>
+          <div class="nextname"><div class="nexticon" id="gps-next-icon">🚉</div><strong id="stat-proxima">—</strong></div>
+          <div class="nextstats"><span id="stat-distancia"></span><span id="stat-eta" style="color:#20e999"></span></div>
+        </div>
+      </section>
+
+      <section class="card exit">
+        <div class="trainIcon" id="exit-icon">🚉</div>
+        <div style="min-width:0"><h3>Desembarque</h3><strong id="exit-nome">—</strong></div>
+        <div class="exit-time"><div class="t" id="exit-hora">--:--</div><span class="etab prev" id="exit-badge">Chegada prevista</span></div>
+      </section>
+
+      <section class="card progress">
+        <div class="sectionTitle"><span>PERCURSO ENTRE ESTAÇÕES</span><span><b id="tr-progress-concluidas">0</b> de <span id="tr-progress-total-estacoes">0</span> estações concluídas</span></div>
+        <div class="progressline"><div class="progressfill" id="gps-progress-fill"></div><div class="progresstrain" id="tr-progress-train">🚆</div></div>
+        <div class="progressText"><span><b id="pct">0%</b> da rota</span><span><b id="tr-progress-restantes-num" style="font-size:15px">0</b> restantes • <span id="tr-progress-km-restante">0 km</span></span></div>
+      </section>
+
+      <section class="card timeline">
+        <div class="sectionTitle"><span>PASSAGEM PELAS ESTAÇÕES</span></div>
+        <div class="stations" id="gps-stations-row"></div>
+      </section>
+
+      <section class="card linecard" id="linecard"></section>
+
+      <section class="kmrow"><span id="km-lbl">Distância do percurso</span><span><b id="km-val">—</b></span></section>
+
+      <section class="card times">
+        <div><div class="t" id="t-inicio">--:--</div><div class="l">Início</div></div>
+        <div><div class="t" id="t-dur">--:--</div><div class="l">Duração</div></div>
+        <div><div class="t" id="t-ult">--:--</div><div class="l" id="t-ult-l">Última atualização</div></div>
+      </section>
+    </div>
+
+    <div id="conteudo-trajeto-final" style="display:none;">
+      <div class="final">
+        <div class="final-h"><span class="final-dot" id="pub-final-dot"></span><span><span id="pub-final-leg-pre">A caminho de</span> <strong id="pub-final-leg-destino"></strong></span></div>
+        <div class="final-s"><span id="pub-final-leg-distancia">—</span><span id="pub-final-leg-eta">—</span></div>
+      </div>
+      <section class="kmrow" id="km-final-row">
+        <span id="km-final-lbl">Distância do percurso</span>
+        <span style="text-align:right"><b id="km-final-val">—</b><small id="km-final-det" style="display:block;font-size:11px;color:#8d9bae;margin-top:3px"></small></span>
+      </section>
+    </div>
+  </div>
+
+  <div class="footer">QualAEstacao · acompanhamento compartilhado</div>
+</main>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyCydrSotGTGwwPtig-cR5S49F-SlY4p8-8",
+    authDomain: "qualaestacao-rastreio-393f6.firebaseapp.com",
+    databaseURL: "https://qualaestacao-rastreio-393f6-default-rtdb.firebaseio.com",
+    projectId: "qualaestacao-rastreio-393f6",
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hhmm = ts => ts ? new Date(ts).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '--:--';
+const fmtDist = m => m < 1000 ? `📍 ${m} m` : `📍 ${(m/1000).toFixed(1).replace('.', ',')} km`;
+function fmtTempo(seg) {
+    seg = Math.max(0, seg);
+    const h = Math.floor(seg / 3600), m = Math.floor(seg % 3600 / 60), s = seg % 60;
+    const mm = String(m).padStart(2,'0'), ss = String(s).padStart(2,'0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+// Duração em formato inconfundível (19min 51s) — "19:51" parecia um horário do dia.
+function fmtDurHtml(seg) {
+    seg = Math.max(0, Math.floor(seg));
+    const h = Math.floor(seg / 3600), m = Math.floor(seg % 3600 / 60), s = seg % 60;
+    const u = t => `<small style="font-size:.55em;font-weight:700;color:#a6b6c9">${t}</small>`;
+    return h > 0 ? `${h}${u('h')} ${String(m).padStart(2,'0')}${u('min')}` : `${m}${u('min')} ${String(s).padStart(2,'0')}${u('s')}`;
+}
+
+const viagemId = new URLSearchParams(window.location.search).get('id');
+
+if (!viagemId) {
+    $('status-msg-inicial').textContent = 'Link inválido — falta o código da viagem.';
+} else {
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const map = L.map('map', { zoomControl: false }).setView([-23.5505, -46.6333], 11);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    // Mesmo mapa-base do app (CARTO Voyager, dados OpenStreetMap) — igual ao initMap() do APK.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '© OpenStreetMap © CARTO'
+    }).addTo(map);
+
+    // Todas as estações da rede como pontos coloridos — igual ao mapa do app.
+    const REDE = {"c":{"1-Azul":"#0455BF","2-Verde":"#007E5E","3-Vermelha":"#EE372F","4-Amarela":"#FFD525","5-Lilás":"#9B3192","7-Rubi":"#CA016B","8-Diamante":"#97A098","9-Esmeralda":"#01A9A7","10-Turquesa":"#049FC3","11-Coral":"#F68368","12-Safira":"#133C8D","13-Jade":"#00B04F","15-Prata":"#888888","17-Ouro":"#F0A000","6-Laranja":"#F7941D"},"s":[["João Paulo I","6-Laranja",-23.4928,-46.6908],["Freguesia do Ó","6-Laranja",-23.502,-46.6939],["Santa Marina","6-Laranja",-23.5144,-46.6914],["Água Branca","6-Laranja",-23.5211,-46.6883],["SESC-Pompeia","6-Laranja",-23.5269,-46.6831],["Perdizes","6-Laranja",-23.5325,-46.6758],["Jabaquara-Comitê Paralímpico Brasileiro","1-Azul",-23.6454,-46.6406],["Conceição","1-Azul",-23.6347,-46.6407],["São Judas","1-Azul",-23.625,-46.6403],["Saúde-Ultrafarma","1-Azul",-23.618,-46.6388],["Praça da Árvore","1-Azul",-23.6105,-46.6379],["Santa Cruz","1-Azul",-23.5984,-46.6359],["Vila Mariana","1-Azul",-23.5885,-46.6342],["Ana Rosa","1-Azul",-23.5806,-46.6381],["Paraíso","1-Azul",-23.5748,-46.6404],["Vergueiro-Sebrae","1-Azul",-23.5689,-46.6395],["São Joaquim","1-Azul",-23.5614,-46.6382],["Japão-Liberdade","1-Azul",-23.5545,-46.6352],["Sé","1-Azul",-23.5501,-46.6325],["São Bento","1-Azul",-23.5439,-46.6336],["Luz","1-Azul",-23.5362,-46.6331],["Tiradentes","1-Azul",-23.5307,-46.6318],["Armênia","1-Azul",-23.525,-46.6289],["Portuguesa-Tietê","1-Azul",-23.5157,-46.6247],["Carandiru","1-Azul",-23.5088,-46.6245],["Santana","1-Azul",-23.5021,-46.6243],["Jardim São Paulo-Ayrton Senna","1-Azul",-23.4919,-46.6164],["Parada Inglesa","1-Azul",-23.4865,-46.6084],["Tucuruvi","1-Azul",-23.4796,-46.6026],["Vila Madalena","2-Verde",-23.5459,-46.6905],["S. N. Sra. de Fátima-Sumaré","2-Verde",-23.5505,-46.6771],["Clínicas","2-Verde",-23.5536,-46.6704],["Consolação","2-Verde",-23.5566,-46.6609],["Trianon-Masp","2-Verde",-23.5626,-46.654],["Brigadeiro","2-Verde",-23.5683,-46.647],["Paraíso","2-Verde",-23.5748,-46.6404],["Ana Rosa","2-Verde",-23.5806,-46.6381],["Chácara Klabin","2-Verde",-23.5919,-46.6302],["Santos-Imigrantes","2-Verde",-23.5959,-46.6207],["Alto do Ipiranga","2-Verde",-23.603,-46.6105],["Sacomã","2-Verde",-23.6013,-46.6026],["Tamanduateí","2-Verde",-23.5935,-46.5889],["Vila Prudente","2-Verde",-23.5845,-46.5823],["Corinthians-Itaquera","3-Vermelha",-23.5422,-46.4711],["Artur Alvim","3-Vermelha",-23.5403,-46.4846],["Patriarca-Vila Ré","3-Vermelha",-23.5311,-46.5016],["Guilhermina-Esperança","3-Vermelha",-23.5293,-46.5166],["Vila Matilde","3-Vermelha",-23.5319,-46.5308],["Penha-Lojas Besni","3-Vermelha",-23.5335,-46.5426],["Carrão-Assaí Atacadista","3-Vermelha",-23.5379,-46.5643],["Tatuapé","3-Vermelha",-23.54,-46.576],["Belém","3-Vermelha",-23.543,-46.5896],["Bresser-Mooca","3-Vermelha",-23.545,-46.606],["Brás","3-Vermelha",-23.5474,-46.6155],["Pedro II","3-Vermelha",-23.5497,-46.626],["Sé","3-Vermelha",-23.5501,-46.6325],["Anhangabaú","3-Vermelha",-23.5479,-46.6391],["República","3-Vermelha",-23.5438,-46.6424],["Santa Cecília","3-Vermelha",-23.5392,-46.6491],["Marechal Deodoro","3-Vermelha",-23.5335,-46.6553],["Palmeiras-Barra Funda","3-Vermelha",-23.5256,-46.6673],["Luz","4-Amarela",-23.5362,-46.6331],["República","4-Amarela",-23.5438,-46.6424],["Higienópolis-Mackenzie","4-Amarela",-23.5489,-46.6523],["Paulista-Pernambucanas","4-Amarela",-23.5565,-46.6618],["Oscar Freire","4-Amarela",-23.5608,-46.6713],["Fradique Coutinho","4-Amarela",-23.5663,-46.6841],["Faria Lima-Pagbank","4-Amarela",-23.5683,-46.6912],["Pinheiros","4-Amarela",-23.5669,-46.7026],["Butantã","4-Amarela",-23.5718,-46.7081],["São Paulo-Morumbi","4-Amarela",-23.5861,-46.7238],["Vila Sônia-Professora Elisabeth Tenreiro","4-Amarela",-23.6081,-46.7344],["Capão Redondo","5-Lilás",-23.6592,-46.7681],["Campo Limpo","5-Lilás",-23.6493,-46.759],["Vila das Belezas","5-Lilás",-23.6403,-46.7458],["Giovanni Gronchi","5-Lilás",-23.644,-46.7341],["Santo Amaro","5-Lilás",-23.6559,-46.7202],["Largo Treze","5-Lilás",-23.6545,-46.7102],["Adolfo Pinheiro-Unisa","5-Lilás",-23.6501,-46.7042],["Alto da Boa Vista","5-Lilás",-23.6418,-46.6996],["Borba Gato","5-Lilás",-23.6335,-46.6929],["Brooklin","5-Lilás",-23.627,-46.6883],["Campo Belo","5-Lilás",-23.6187,-46.6824],["Eucaliptos","5-Lilás",-23.6098,-46.6686],["Moema","5-Lilás",-23.6038,-46.6621],["AACD-Servidor","5-Lilás",-23.5978,-46.6523],["Hospital São Paulo","5-Lilás",-23.5983,-46.6456],["Santa Cruz","5-Lilás",-23.5984,-46.6359],["Chácara Klabin","5-Lilás",-23.5919,-46.6302],["Palmeiras-Barra Funda","7-Rubi",-23.5256,-46.6673],["Água Branca","7-Rubi",-23.5221,-46.6897],["Lapa-Senac","7-Rubi",-23.5176,-46.704],["Piqueri","7-Rubi",-23.5034,-46.7151],["Pirituba","7-Rubi",-23.4885,-46.7261],["Vila Clarice","7-Rubi",-23.4697,-46.7445],["Jaraguá","7-Rubi",-23.4551,-46.7388],["Perus","7-Rubi",-23.4024,-46.756],["Caieiras","7-Rubi",-23.3662,-46.7516],["Franco da Rocha","7-Rubi",-23.3299,-46.7264],["Baltazar Fidélis","7-Rubi",-23.3101,-46.7232],["Francisco Morato","7-Rubi",-23.2823,-46.7437],["Campo Limpo Paulista","7-Rubi",-23.2066,-46.7855],["Botujuru","7-Rubi",-23.2003,-46.8217],["Várzea Paulista","7-Rubi",-23.2115,-46.8285],["Jundiaí","7-Rubi",-23.1948,-46.8725],["Júlio Prestes","8-Diamante",-23.5335,-46.6403],["Palmeiras-Barra Funda","8-Diamante",-23.5256,-46.6673],["Água Branca","8-Diamante",-23.5221,-46.6897],["Lapa-Senac","8-Diamante",-23.52,-46.6992],["Domingos de Moraes","8-Diamante",-23.5188,-46.7216],["Imperatriz Leopoldina","8-Diamante",-23.5237,-46.7375],["Presidente Altino","8-Diamante",-23.5313,-46.7618],["Osasco","8-Diamante",-23.5277,-46.7759],["Comandante Sampaio","8-Diamante",-23.5257,-46.796],["Quitaúna","8-Diamante",-23.5227,-46.8071],["General Miguel Costa","8-Diamante",-23.5235,-46.8158],["Carapicuíba","8-Diamante",-23.5186,-46.8353],["Santa Terezinha","8-Diamante",-23.5166,-46.848],["Antônio João","8-Diamante",-23.5169,-46.8587],["Barueri","8-Diamante",-23.5126,-46.8751],["Jardim Belval","8-Diamante",-23.514,-46.8893],["Jardim Silveira-Leo Madeiras","8-Diamante",-23.5235,-46.8935],["Jandira","8-Diamante",-23.5297,-46.9024],["Sagrado Coração","8-Diamante",-23.482,-46.9303],["Engenheiro Cardoso","8-Diamante",-23.475,-46.9497],["Itapevi","8-Diamante",-23.5487,-47.0648],["Santa Rita","8-Diamante",-23.552,-47.081],["Ambuitá","8-Diamante",-23.558,-47.094],["Amador Bueno","8-Diamante",-23.565,-47.108],["Osasco","9-Esmeralda",-23.5277,-46.7759],["Presidente Altino","9-Esmeralda",-23.5313,-46.7618],["Ceasa","9-Esmeralda",-23.5375,-46.7425],["Villa Lobos-Jaguaré","9-Esmeralda",-23.546,-46.7329],["Cidade Universitária","9-Esmeralda",-23.5576,-46.7119],["Pinheiros","9-Esmeralda",-23.5669,-46.7026],["Hebraica-Rebouças","9-Esmeralda",-23.5737,-46.6986],["Cidade Jardim","9-Esmeralda",-23.5852,-46.6911],["Vila Olímpia","9-Esmeralda",-23.5934,-46.6927],["Berrini-Casas Bahia","9-Esmeralda",-23.6046,-46.6968],["Morumbi-Claro","9-Esmeralda",-23.6215,-46.7015],["Granja Julieta","9-Esmeralda",-23.6276,-46.712],["João Dias","9-Esmeralda",-23.6401,-46.7234],["Santo Amaro","9-Esmeralda",-23.6559,-46.7202],["Socorro","9-Esmeralda",-23.6632,-46.711],["Jurubatuba-Senac","9-Esmeralda",-23.6775,-46.7022],["Autódromo","9-Esmeralda",-23.706,-46.6883],["Primavera-Interlagos","9-Esmeralda",-23.723,-46.6918],["Grajaú","9-Esmeralda",-23.6947,-46.6513],["Mendes-Vila Natal","9-Esmeralda",-23.7116,-46.6398],["Varginha","9-Esmeralda",-23.7239,-46.6309],["Palmeiras-Barra Funda","10-Turquesa",-23.5256,-46.6673],["Luz","10-Turquesa",-23.5362,-46.6331],["Brás","10-Turquesa",-23.5474,-46.6155],["Juventus-Mooca","10-Turquesa",-23.5578,-46.6085],["Ipiranga","10-Turquesa",-23.5825,-46.5968],["Tamanduateí","10-Turquesa",-23.5935,-46.5889],["São Caetano do Sul","10-Turquesa",-23.6101,-46.5701],["Utinga","10-Turquesa",-23.6262,-46.5441],["Prefeito Saladino","10-Turquesa",-23.6384,-46.5367],["Prefeito Celso Daniel-Santo André","10-Turquesa",-23.65,-46.5279],["Capuava","10-Turquesa",-23.6583,-46.4899],["Mauá","10-Turquesa",-23.6677,-46.462],["Guapituba","10-Turquesa",-23.692,-46.4487],["Ribeirão Pires","10-Turquesa",-23.714,-46.4144],["Rio Grande da Serra","10-Turquesa",-23.7434,-46.3918],["Palmeiras-Barra Funda","11-Coral",-23.5256,-46.6673],["Luz","11-Coral",-23.5362,-46.6331],["Brás","11-Coral",-23.5474,-46.6155],["Tatuapé","11-Coral",-23.54,-46.576],["Corinthians-Itaquera","11-Coral",-23.5422,-46.4711],["Dom Bosco","11-Coral",-23.5418,-46.4482],["José Bonifácio","11-Coral",-23.5391,-46.4316],["Guaianases","11-Coral",-23.5423,-46.4156],["Antônio Gianetti Neto","11-Coral",-23.5544,-46.3837],["Ferraz de Vasconcelos","11-Coral",-23.5904,-46.3927],["Poá","11-Coral",-23.5231,-46.3437],["Calmon Viana","11-Coral",-23.5255,-46.3327],["Suzano","11-Coral",-23.5342,-46.308],["Jundiapeba","11-Coral",-23.5428,-46.2578],["Mogi das Cruzes","11-Coral",-23.5215,-46.1979],["Estudantes","11-Coral",-23.5,-46.1375],["Brás","12-Safira",-23.5474,-46.6155],["Tatuapé","12-Safira",-23.54,-46.576],["Engenheiro Goulart","12-Safira",-23.4981,-46.5198],["USP Leste","12-Safira",-23.5615,-46.5249],["Comendador Ermelino","12-Safira",-23.5286,-46.484],["São Miguel Paulista","12-Safira",-23.4906,-46.4432],["Jardim Helena-Vila Mara","12-Safira",-23.4927,-46.4214],["Itaim Paulista","12-Safira",-23.494,-46.4022],["Jardim Romano","12-Safira",-23.485,-46.3858],["Engenheiro Manoel Feio","12-Safira",-23.4792,-46.3676],["Itaquaquecetuba","12-Safira",-23.4859,-46.3482],["Aracaré","12-Safira",-23.4999,-46.3391],["Calmon Viana","12-Safira",-23.5255,-46.3327],["Engenheiro Goulart","13-Jade",-23.4981,-46.5198],["Guarulhos-CECAP","13-Jade",-23.4622,-46.5332],["Aeroporto-Guarulhos","13-Jade",-23.4327,-46.4937],["Vila Prudente","15-Prata",-23.5845,-46.5823],["Oratório","15-Prata",-23.5822,-46.5619],["São Lucas","15-Prata",-23.5889,-46.5446],["Camilo Haddad","15-Prata",-23.5954,-46.5377],["Vila Tolstói","15-Prata",-23.6008,-46.5272],["Vila União","15-Prata",-23.603,-46.5155],["Jardim Planalto","15-Prata",-23.607,-46.5073],["Sapopemba","15-Prata",-23.6147,-46.5008],["Fazenda da Juta","15-Prata",-23.6118,-46.4875],["São Mateus","15-Prata",-23.6123,-46.4773],["Jardim Colonial","15-Prata",-23.6382,-46.4492],["Morumbi-Claro","17-Ouro",-23.6215,-46.7015],["Chucri Zaidan","17-Ouro",-23.614,-46.6954],["Vila Cordeiro","17-Ouro",-23.6156,-46.6886],["Campo Belo","17-Ouro",-23.6187,-46.6824],["Vereador José Diniz","17-Ouro",-23.6222,-46.6787],["Brooklin Paulista","17-Ouro",-23.6295,-46.6736],["Aeroporto-Congonhas","17-Ouro",-23.627,-46.6618],["Washington Luís","17-Ouro",-23.6346,-46.6683]]};
+    REDE.s.forEach(([nome, linha, lat, lon]) => {
+        L.circleMarker([lat, lon], { radius: 3.5, fillColor: REDE.c[linha] || '#888', color: '#fff', weight: 1, fillOpacity: .8 })
+            .addTo(map).bindTooltip(`<b>${esc(nome)}</b><br><small>${esc(linha)}</small>`, { direction: 'top' });
+    });
+    // o mapa nasce com a área escondida: remede sempre que o tamanho mudar
+    if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize()).observe($('map'));
+
+    let marcador = null, primeiraPosicao = true, rotaLayer = null, seguir = false;
+    let marcadoresEst = [], rotaBounds = null, rotaDesenhada = false;
+    let estacoesConstruidas = false, timerId = null;
+    let t0 = null, fimTs = null, ultimaAtualizacao = null, statusAtual = 'ativa';
+
+    function construirEstacoes(d) {
+        if (!d.estacoes || d.estacoes.length < 2) return;
+        estacoesConstruidas = true;
+        const ult = d.estacoes[d.estacoes.length - 1];
+        $('exit-icon').style.background = ult.cor || '#0b96d5';
+        $('exit-nome').textContent = d.destinoNome || ult.nome || '—';
+
+        $('gps-stations-row').innerHTML = d.estacoes.map((e, i) => {
+            const conex = (e.conexoes && e.conexoes.length)
+                ? `<div class="conex">${e.conexoes.map(c => `<span style="background:${esc(c.cor)}">${esc(c.numero)}${c.aviao ? ' ✈' : ''}</span>`).join('')}</div>` : '';
+            return `<div class="station" id="gstn-${i}">${conex}${i > 0 ? `<div class="transit" id="gtransit-${i}"><i></i><span>A caminho</span><i></i></div>` : ''}<div class="dot" id="gdot-${i}"></div><b>${esc(e.nome)}</b><small id="gstatus-${i}"></small></div>`;
+        }).join('');
+
+        const cor = d.linhaPrincipalCor || '#888';
+        const num = (d.linhaPrincipal || '').split('-')[0] || '';
+        const nome = (d.linhaPrincipal || '').split('-').slice(1).join('-') || '';
+        const outras = (d.linhas || []).filter((l, i, a) => a.indexOf(l) === i);
+        const baldeacoes = Math.max(0, (d.linhas || []).length - 1);
+        $('linecard').innerHTML = `
+            <div class="badge" style="background:${esc(cor)}"><span class="num">${esc(num)}</span><span class="name">${esc(nome)}</span></div>
+            <div><h3>Linha ${esc(num)} ${esc(nome)}</h3>
+            <p>→ ${esc(d.destinoNome || '')}${outras.length > 1 ? ` · <b>${baldeacoes}</b> baldeação(ões)` : ' · trajeto direto'}</p></div>`;
+        document.documentElement.style.setProperty('--linha', cor);
+        desenharRota(d);
+    }
+
+    // Mesmo trajeto e mesmos marcadores do mapa do app (linha vermelha com brilho,
+    // início vermelho, destino azul, estações com nome fixo).
+    function desenharRota(d) {
+        if (rotaDesenhada || !d.estacoes) return;
+        const pts = d.estacoes.filter(e => typeof e.lat === 'number' && typeof e.lon === 'number');
+        if (pts.length < 2) return; // viagem antiga, sem coordenadas
+        rotaDesenhada = true;
+        const coords = pts.map(e => [e.lat, e.lon]);
+        L.polyline(coords, { weight: 14, color: '#E92030', opacity: .12 }).addTo(map);
+        const pl = L.polyline(coords, { weight: 5, color: '#E92030', opacity: .9, lineJoin: 'round' }).addTo(map);
+        rotaBounds = pl.getBounds();
+        const ponto = (c, cor, rotulo, nome) => L.marker(c, { icon: L.divIcon({
+            html: `<div style="width:20px;height:20px;border-radius:50%;background:${cor};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35);"></div>`,
+            className: '', iconSize: [20, 20], iconAnchor: [10, 10] }) }).addTo(map)
+            .bindPopup(`<b>${rotulo}:</b> ${esc(nome)}`)
+            .bindTooltip(nome, { permanent: true, direction: 'top', className: 'station-label-permanent' });
+        ponto(coords[0], '#E92030', 'Embarque', pts[0].nome);
+        ponto(coords[coords.length - 1], '#006EF5', 'Desembarque', pts[pts.length - 1].nome);
+        d.estacoes.forEach((e, i) => {
+            if (typeof e.lat !== 'number') { marcadoresEst.push(null); return; }
+            const fim = i === 0 || i === d.estacoes.length - 1, tam = fim ? 16 : 12;
+            const m = L.marker([e.lat, e.lon], { zIndexOffset: 1500 - i, icon: L.divIcon({
+                html: `<div class="route-station-marker"><div class="station-dot upcoming" id="rsdot-${i}" style="background:${esc(e.cor || '#888')};width:${tam}px;height:${tam}px;"></div></div>`,
+                className: '', iconSize: [tam, tam], iconAnchor: [tam / 2, tam / 2] }) })
+                .addTo(map)
+                .bindTooltip(e.nome.length > 16 ? e.nome.split(/[\s\-]/)[0] : e.nome, { permanent: true, direction: 'right', offset: [8, 0], className: 'station-label-permanent' });
+            marcadoresEst.push(m);
+        });
+        map.invalidateSize();
+        map.fitBounds(rotaBounds, { padding: [40, 40] });
+    }
+
+    let ultimoDisplayIdx = -1;
+    function atualizarProgresso(idx, total, d, previsoes, pos) {
+        const pass = d.passagens || {};
+        const chegou = d.status === 'chegou';
+        const naEstacao = !!(pos && pos.estaNaEstacaoAtual);
+        // Mesma regra do app: em trânsito o "ao vivo" é a PRÓXIMA estação;
+        // a que acabou de sair já conta como concluída.
+        const emTransito = !chegou && !naEstacao && idx < total - 1;
+        const disp = chegou ? total - 1 : (emTransito ? Math.min(idx + 1, total - 1) : idx);
+        for (let i = 0; i < total; i++) {
+            const el = $(`gstn-${i}`); if (!el) continue;
+            const cls = i < disp ? 'passed' : i === disp ? 'current' : (i === disp + 1 ? 'next' : '');
+            el.className = 'station ' + cls + ((emTransito && i === disp && i > 0) ? ' em-transito' : '');
+            const rs = document.getElementById(`rsdot-${i}`);
+            if (rs) rs.className = 'station-dot ' + (i < idx || (chegou && i < total - 1) ? 'passed' : (i === idx || (chegou && i === total - 1)) ? 'current' : 'upcoming');
+            const dot = $(`gdot-${i}`), st = $(`gstatus-${i}`);
+            const real = pass[i] ? hhmm(pass[i]) : '';
+            const prev = previsoes && previsoes[i] ? '~' + hhmm(previsoes[i]) : '';
+            const set = (hora, txt) => { st.innerHTML = (hora ? esc(hora) + '<br>' : '') + esc(txt); };
+            if (chegou && i === total - 1) { dot.textContent = '🏁'; set(real, 'Chegou'); }
+            else if (i < disp) { dot.textContent = '✓'; set(real, 'Concluída'); }
+            else if (i === disp) {
+                dot.textContent = '🚆';
+                if (emTransito) set(prev, i === total - 1 ? 'Desembarque' : '');
+                else set(real, i === total - 1 ? 'Desembarque' : 'Atual');
+            }
+            else { dot.textContent = ''; set(prev, i === disp + 1 ? 'Próxima' : (i === total - 1 ? 'Desembarque' : '')); }
+        }
+        if (disp !== ultimoDisplayIdx) {
+            ultimoDisplayIdx = disp;
+            const cur = $(`gstn-${disp}`);
+            if (cur) cur.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+
+        // Progresso: valores exatos calculados no app (iguais aos da tela de quem viaja)
+        let pct = (pos && typeof pos.pct === 'number') ? pos.pct : (chegou ? 100 : idx / Math.max(total - 1, 1) * 100);
+        if (chegou) pct = 100;
+        pct = Math.max(0, Math.min(100, pct));
+        $('gps-progress-fill').style.width = pct + '%';
+        $('tr-progress-train').style.left = pct + '%';
+        $('pct').textContent = Math.round(pct) + '%';
+        const concl = chegou ? total - 1 : idx;
+        $('tr-progress-concluidas').textContent = concl;
+        $('tr-progress-total-estacoes').textContent = total;
+        $('tr-progress-restantes-num').textContent = Math.max(0, (total - 1) - concl);
+        let km = null;
+        if (chegou) km = 0;
+        else if (pos && typeof pos.kmRestanteM === 'number') km = pos.kmRestanteM / 1000;
+        else if (d.totalKm) km = d.totalKm * Math.max(0, (total - 1) - idx) / Math.max(total - 1, 1);
+        if (km != null) $('tr-progress-km-restante').textContent = km.toFixed(1).replace('.', ',') + ' km';
+        if (d.totalKm) {
+            const fmt = v => v.toFixed(1).replace('.', ',') + ' km';
+            const perc = Math.max(0, Math.min(d.totalKm, d.totalKm - (km != null ? km : d.totalKm)));
+            if (chegou) { $('km-lbl').textContent = 'Total percorrido'; $('km-val').textContent = fmt(d.totalKm); }
+            else { $('km-lbl').textContent = 'Distância do percurso'; $('km-val').textContent = fmt(perc) + ' de ' + fmt(d.totalKm); }
+        }
+    }
+
+    function tick() {
+        if (!t0) return;
+        const fim = fimTs || Date.now();
+        $('tr-trip-timer').textContent = fmtTempo(Math.floor((fim - t0) / 1000));
+        $('t-dur').innerHTML = fmtDurHtml((fim - t0) / 1000);
+        // sinal: se o celular ficou >90s sem enviar posição durante a viagem
+        const live = $('live');
+        if (statusAtual === 'ativa' && ultimaAtualizacao) {
+            const atraso = Date.now() - ultimaAtualizacao;
+            if (atraso > 90000) { live.classList.add('off'); live.firstChild.textContent = '● Sem sinal'; $('live-sub').textContent = 'há ' + Math.round(atraso / 60000) + ' min'; }
+            else {
+                live.classList.remove('off'); live.firstChild.textContent = '● Online';
+                const seg = Math.max(0, Math.round(atraso / 1000));
+                $('live-sub').textContent = seg < 3 ? 'ao vivo' : 'atualizado há ' + seg + 's';
+            }
+        }
+    }
+
+    $('recenter').addEventListener('click', () => {
+        seguir = !seguir;
+        $('recenter').classList.toggle('on', seguir);
+        if (seguir && marcador) map.setView(marcador.getLatLng(), 15, { animate: true });
+        else if (!seguir && rotaBounds) map.fitBounds(rotaBounds, { padding: [40, 40] });
+    });
+    map.on('dragstart', () => { seguir = false; $('recenter').classList.remove('on'); });
+
+    db.ref('viagens/' + viagemId).on('value', snap => {
+        const d = snap.val();
+        if (!d) { $('status-msg-inicial').textContent = 'Viagem não encontrada.'; return; }
+        $('status-msg-inicial').style.display = 'none';
+        $('conteudo').style.display = 'block';
+        map.invalidateSize(); // o mapa nasce com a área escondida; sem isso o trajeto não aparece
+
+        statusAtual = d.status || 'ativa';
+        const pos = d.posicao;
+        t0 = d.t0 || (pos && pos.t0) || d.criadoEm || null;
+        ultimaAtualizacao = pos && pos.atualizadoEm || null;
+
+        $('o-nome').textContent = d.origemNome || '—';
+        $('d-nome').textContent = d.destinoNome || '—';
+        $('m-km').textContent = d.totalKm ? d.totalKm.toFixed(1).replace('.', ',') + ' km' : '—';
+        { // Prefixo do trem e equipe a bordo (informados pelo passageiro; opcionais)
+            const pf = (d.prefixo || '').toString().trim(), eq = (d.equipe || '').toString().trim();
+            $('m-prefixo').textContent = pf; $('m-equipe').textContent = eq;
+            $('m-prefixo-w').style.display = pf ? '' : 'none';
+            $('m-equipe-w').style.display = eq ? '' : 'none';
+            $('meta-trem').style.display = (pf || eq) ? '' : 'none';
+        }
+        if (d.estacoes) $('m-est').textContent = d.estacoes.length + (d.estacoes.length === 1 ? ' estação' : ' estações');
+        $('t-inicio').textContent = hhmm(t0);
+
+        const st = $('status'), stTxt = $('status-txt'), banner = $('banner');
+        st.className = 'status';
+        if (d.status === 'chegou') {
+            st.classList.add('chegou'); stTxt.textContent = 'Chegou ao destino';
+            const tsUlt = (d.estacoes && d.passagens) ? d.passagens[d.estacoes.length - 1] : 0;
+            fimTs = tsUlt || (pos && pos.atualizadoEm) || Date.now();
+            const h = hhmm(fimTs);
+            banner.innerHTML = `<div class="banner chegou">✅ Chegou ao destino, estação ${esc(d.destinoNome || 'seu destino')} às ${h}</div>`;
+            $('t-ult').textContent = h; $('t-ult-l').textContent = 'Chegada';
+            $('live').classList.remove('off'); $('live').firstChild.textContent = '● Concluída'; $('live-sub').textContent = 'viagem finalizada';
+        } else if (d.status === 'encerrada') {
+            st.classList.add('encerrada'); stTxt.textContent = 'Rastreamento encerrado';
+            fimTs = pos && pos.atualizadoEm || Date.now();
+            banner.innerHTML = '<div class="banner encerrada">O rastreamento foi encerrado antes de chegar ao destino.</div>';
+            $('t-ult').textContent = hhmm(fimTs);
+            $('live').firstChild.textContent = '● Encerrada'; $('live-sub').textContent = 'sem atualização';
+        } else {
+            stTxt.textContent = 'Passageiro em deslocamento'; banner.innerHTML = ''; fimTs = null;
+            $('t-ult').textContent = hhmm(ultimaAtualizacao);
+        }
+
+        // Cartão de desembarque: hora real de chegada, ou a previsão enviada pelo app
+        const eh = $('exit-hora'), eb = $('exit-badge');
+        const nEst = d.estacoes ? d.estacoes.length : 0;
+        const chegadaReal = (d.passagens && nEst && d.passagens[nEst - 1]) || (d.status === 'chegou' && pos && pos.atualizadoEm) || 0;
+        if (d.status === 'chegou') { eh.textContent = hhmm(chegadaReal); eb.textContent = 'Chegou'; eb.className = 'etab'; }
+        else if (d.status === 'encerrada') { eh.textContent = '—'; eb.textContent = 'Encerrada'; eb.className = 'etab enc'; }
+        else if (pos && pos.chegadaPrevistaTs) { eh.textContent = hhmm(pos.chegadaPrevistaTs); eb.textContent = 'Chegada prevista'; eb.className = 'etab prev'; }
+        else { eh.textContent = '--:--'; eb.textContent = 'Calculando'; eb.className = 'etab prev'; }
+
+        if (!estacoesConstruidas) construirEstacoes(d);
+        if (!timerId) timerId = setInterval(tick, 1000);
+        tick();
+
+        if (pos && pos.lat && pos.lon) {
+            try {
+                const v = pos.velocidadeKmh || 0;
+                $('stat-velocidade').textContent = v;
+                const g = Math.min(v / 100, 1) * 360;
+                $('gauge').style.background = `conic-gradient(#12d98b 0deg ${g}deg, #1a2b3e ${g}deg 360deg)`;
+
+                const idx = pos.closestIdx ?? 0;
+                if (d.status === 'chegou') {
+                    $('gps-station-label').textContent = 'Destino';
+                    $('stat-proxima').textContent = d.destinoNome || '—';
+                    $('stat-distancia').textContent = '📍 Chegou'; $('stat-eta').textContent = '';
+                } else if (pos.estaNaEstacaoAtual) {
+                    $('gps-station-label').textContent = 'Estação atual';
+                    $('gps-next-icon').style.background = pos.estacaoAtualCor || '#888';
+                    $('stat-proxima').textContent = pos.estacaoAtualNome || '—';
+                    $('stat-distancia').textContent = '📍 Na estação'; $('stat-eta').textContent = '';
+                } else {
+                    $('gps-station-label').textContent = 'Próxima estação';
+                    $('stat-proxima').textContent = pos.proximaEstacaoNome || '—';
+                    $('stat-distancia').textContent = pos.distProximaM != null ? fmtDist(pos.distProximaM) : '';
+                    $('stat-eta').textContent = pos.etaTexto ? '⏱ ' + pos.etaTexto : '';
+                    if (d.estacoes && d.estacoes[idx + 1]) $('gps-next-icon').style.background = d.estacoes[idx + 1].cor;
+                }
+                if (d.estacoes) atualizarProgresso(idx, d.estacoes.length, d, d.previsoes || pos.previsoes, pos);
+
+                if (!marcador || !marcador.getElement) {
+                    marcador = L.marker([pos.lat, pos.lon], { zIndexOffset: 2000, icon: L.divIcon({
+                        html: '<div class="gps-user-marker"><div class="gps-pulse"></div><div class="gps-dot"></div></div>',
+                        className: '', iconSize: [40, 40], iconAnchor: [20, 20] }) }).addTo(map);
+                } else marcador.setLatLng([pos.lat, pos.lon]);
+                if (primeiraPosicao) {
+                    primeiraPosicao = false;
+                    if (rotaBounds) map.fitBounds(rotaBounds, { padding: [40, 40] }); else map.setView([pos.lat, pos.lon], 14);
+                } else if (seguir && !(d.trajetoFinal && d.trajetoFinal.ativo)) map.panTo([pos.lat, pos.lon], { animate: true });
+            } catch (e) { console.warn('Erro ao atualizar posição:', e); }
+        } else if (d.estacoes && !pos) {
+            $('stat-proxima').textContent = (d.estacoes[1] && d.estacoes[1].nome) || '—';
+            atualizarProgresso(0, d.estacoes.length, d, d.previsoes, null);
+        }
+
+        const tf = d.trajetoFinal;
+        if (tf && (tf.ativo || tf.destinoEndereco)) {
+            $('conteudo-trem').style.display = 'none';
+            $('conteudo-trajeto-final').style.display = 'block';
+            const fmtKm = v => v.toFixed(1).replace('.', ',') + ' km';
+            const distRest = tf.distanciaM || 0;
+            $('pub-final-leg-destino').textContent = tf.destinoEndereco || '';
+            // km do trajeto final: trecho em linha reta da última estação até o destino (mesma medida do app)
+            const ult = d.estacoes && d.estacoes[d.estacoes.length - 1];
+            let legTotalM = 0;
+            if (ult && typeof ult.lat === 'number' && tf.destinoLat && tf.destinoLon) {
+                const R = 6371000, rad = x => x * Math.PI / 180;
+                const a = Math.sin(rad(tf.destinoLat - ult.lat) / 2) ** 2 + Math.cos(rad(ult.lat)) * Math.cos(rad(tf.destinoLat)) * Math.sin(rad(tf.destinoLon - ult.lon) / 2) ** 2;
+                legTotalM = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            }
+            const legPercM = Math.max(0, legTotalM - distRest);
+            const trilhoKm = d.totalKm || 0, totalKm = trilhoKm + legPercM / 1000;
+            $('km-final-val').textContent = fmtKm(totalKm);
+            $('km-final-det').textContent = (trilhoKm ? 'trem ' + fmtKm(trilhoKm) + ' + ' : '') + 'trajeto final ' + fmtKm(legPercM / 1000);
+            if (tf.ativo) {
+                $('pub-final-leg-pre').textContent = 'A caminho de';
+                $('pub-final-dot').style.animation = '';
+                $('km-final-lbl').textContent = 'Distância do percurso';
+                $('pub-final-leg-distancia').textContent = fmtDist(distRest);
+                $('pub-final-leg-eta').textContent = `~${Math.max(1, Math.round((distRest / 1000) / 20 * 60))} min`;
+            } else {
+                $('pub-final-leg-pre').textContent = 'Chegou em';
+                $('pub-final-dot').style.animation = 'none';
+                $('km-final-lbl').textContent = 'Total percorrido';
+                $('pub-final-leg-distancia').textContent = '📍 Chegou';
+                $('pub-final-leg-eta').textContent = '';
+            }
+            if (tf.ativo && tf.lat && tf.lon) {
+                if (!marcador) marcador = L.marker([tf.lat, tf.lon], { zIndexOffset: 2000, icon: L.divIcon({
+                    html: '<div class="gps-user-marker"><div class="gps-pulse"></div><div class="gps-dot"></div></div>',
+                    className: '', iconSize: [40, 40], iconAnchor: [20, 20] }) }).addTo(map);
+                else marcador.setLatLng([tf.lat, tf.lon]);
+                if (seguir) map.panTo([tf.lat, tf.lon], { animate: true });
+            }
+        }
+    }, erro => {
+        $('status-msg-inicial').style.display = 'block';
+        $('status-msg-inicial').textContent = 'Erro ao conectar.';
+        console.warn(erro);
+    });
+}
+</script>
+</body>
+</html>
