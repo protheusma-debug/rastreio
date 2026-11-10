@@ -239,7 +239,7 @@ body,html{background:#030814}
 
     <section class="trio" id="trio">
       <div class="trio-bloco" style="--c:#22d36b"><div class="trio-rot">Origem</div><div class="trio-nome" id="trio-o-nome">—</div><div class="trio-hora" id="trio-o-hora">--:--</div><div class="trio-sub">saída</div></div>
-      <div class="trio-bloco" style="--c:#2f8bff"><div class="trio-rot">Atual</div><div class="trio-nome" id="trio-a-nome">—</div><div class="trio-hora" id="trio-a-hora">--:--</div><div class="trio-sub" id="trio-a-sub">&nbsp;</div></div>
+      <div class="trio-bloco" style="--c:#2f8bff"><div class="trio-rot" id="trio-a-rot">Atual</div><div class="trio-nome" id="trio-a-nome">—</div><div class="trio-hora" id="trio-a-hora">--:--</div><div class="trio-sub" id="trio-a-sub">&nbsp;</div></div>
       <div class="trio-bloco" style="--c:#f0b400"><div class="trio-rot">Destino</div><div class="trio-nome" id="trio-d-nome">—</div><div class="trio-hora" id="trio-d-hora">--:--</div><div class="trio-sub" id="trio-d-sub">previsão</div></div>
     </section>
 
@@ -424,8 +424,16 @@ function atualizarTrio(idx, total, d, previsoes, pos, chegou, naEstacao) {
             const nm = i => (E[i] && E[i].nome) || '—';
             set('trio-o-nome', nm(0)); set('trio-o-hora', hm(P[0] || d.t0 || d.criadoEm));
             const cur = Math.min(idx, total - 1);
-            set('trio-a-nome', nm(cur)); set('trio-a-hora', hm(P[cur] || (pos && pos.atualizadoEm)));
-            set('trio-a-sub', chegou ? 'chegou' : (naEstacao ? 'na estação' : (cur < total - 1 ? '→ ' + nm(cur + 1) : '')));
+            const emTransito = !chegou && !naEstacao && cur < total - 1;
+            const rot = $('trio-a-rot'); if (rot) rot.textContent = emTransito ? 'A caminho' : 'Atual';
+            if (emTransito) {
+                set('trio-a-nome', nm(cur + 1));
+                set('trio-a-hora', hm((previsoes && previsoes[cur + 1]) || 0));
+                set('trio-a-sub', 'previsão · saiu de ' + nm(cur));
+            } else {
+                set('trio-a-nome', nm(cur)); set('trio-a-hora', hm(P[cur] || (pos && pos.atualizadoEm)));
+                set('trio-a-sub', chegou ? 'chegou' : 'na estação');
+            }
             set('trio-d-nome', nm(total - 1));
             const prev = (previsoes && previsoes[total - 1]) || 0;
             set('trio-d-hora', hm(chegou ? (P[total - 1] || prev) : prev));
